@@ -9,6 +9,7 @@ import {
   ChartNoAxesCombined,
   ChevronRight,
   CircleDollarSign,
+  Download,
   Home,
   Landmark,
   ListFilter,
@@ -17,6 +18,7 @@ import {
   Plus,
   ShieldCheck,
   Smartphone,
+  Share2,
   UserRound,
   Wallet,
   WifiOff,
@@ -84,6 +86,7 @@ export function App() {
   const [apiOnline, setApiOnline] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [isStandalone, setIsStandalone] = useState(() => isAppInstalled());
 
   useEffect(() => {
     if (!session?.id) return;
@@ -100,8 +103,16 @@ export function App() {
       event.preventDefault();
       setInstallPrompt(event as BeforeInstallPromptEvent);
     };
+    const onAppInstalled = () => {
+      setInstallPrompt(null);
+      setIsStandalone(true);
+    };
     window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
-    return () => window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+    window.addEventListener("appinstalled", onAppInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", onAppInstalled);
+    };
   }, []);
 
   useEffect(() => {
@@ -206,7 +217,13 @@ export function App() {
   if (!session) {
     return (
       <main className="app-frame auth-frame">
-        <SignupScreen onSignup={handleSignup} installPrompt={installPrompt} consumeInstallPrompt={() => setInstallPrompt(null)} error={error} />
+        <SignupScreen
+          onSignup={handleSignup}
+          installPrompt={installPrompt}
+          consumeInstallPrompt={() => setInstallPrompt(null)}
+          isStandalone={isStandalone}
+          error={error}
+        />
       </main>
     );
   }
@@ -224,18 +241,7 @@ export function App() {
         </button>
       </header>
 
-      {installPrompt && (
-        <button
-          className="install-banner"
-          onClick={() => {
-            void installPrompt.prompt();
-            setInstallPrompt(null);
-          }}
-        >
-          <Smartphone size={18} />
-          Install BAZE P2P
-        </button>
-      )}
+      {!isStandalone && <InstallCard installPrompt={installPrompt} consumeInstallPrompt={() => setInstallPrompt(null)} compact />}
 
       {error && (
         <div className={apiOnline ? "notice" : "notice offline-notice"}>
@@ -281,11 +287,13 @@ function SignupScreen({
   onSignup,
   installPrompt,
   consumeInstallPrompt,
+  isStandalone,
   error
 }: {
   onSignup: (payload: { email: string; legalName: string; countryCode: string; passcode: string }) => Promise<void>;
   installPrompt: BeforeInstallPromptEvent | null;
   consumeInstallPrompt: () => void;
+  isStandalone: boolean;
   error: string | null;
 }) {
   const [email, setEmail] = useState("");
@@ -308,18 +316,7 @@ function SignupScreen({
         <h1>Create your BAZE wallet</h1>
         <p className="auth-copy">Sign up, get USDT and USDC internal wallets, complete identity verification, then trade P2P with escrow protection.</p>
       </div>
-      {installPrompt && (
-        <button
-          className="install-banner"
-          onClick={() => {
-            void installPrompt.prompt();
-            consumeInstallPrompt();
-          }}
-        >
-          <Smartphone size={18} />
-          Install on this phone
-        </button>
-      )}
+      {!isStandalone && <InstallCard installPrompt={installPrompt} consumeInstallPrompt={consumeInstallPrompt} />}
       {error && <div className="notice offline-notice">{error}</div>}
       <div className="auth-form">
         <input placeholder="Email address" value={email} onChange={(event) => setEmail(event.target.value)} inputMode="email" />
@@ -331,6 +328,53 @@ function SignupScreen({
         </button>
       </div>
     </section>
+  );
+}
+
+function InstallCard({
+  installPrompt,
+  consumeInstallPrompt,
+  compact = false
+}: {
+  installPrompt: BeforeInstallPromptEvent | null;
+  consumeInstallPrompt: () => void;
+  compact?: boolean;
+}) {
+  const ios = isIOS();
+
+  if (installPrompt) {
+    return (
+      <div className={compact ? "install-card compact" : "install-card"}>
+        <div>
+          <Download size={18} />
+          <strong>Download BAZE P2P to this phone</strong>
+        </div>
+        {!compact && <p>Install it as a standalone mobile app with its own home-screen icon.</p>}
+        <button
+          onClick={() => {
+            void installPrompt.prompt();
+            consumeInstallPrompt();
+          }}
+        >
+          <Smartphone size={18} />
+          Install app
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className={compact ? "install-card compact" : "install-card"}>
+      <div>
+        {ios ? <Share2 size={18} /> : <Smartphone size={18} />}
+        <strong>{ios ? "Add BAZE P2P to Home Screen" : "Install BAZE P2P"}</strong>
+      </div>
+      <p>
+        {ios
+          ? "On iPhone: open this page in Safari, tap Share, then Add to Home Screen."
+          : "On Android Chrome: open the browser menu and choose Install app or Add to Home screen."}
+      </p>
+    </div>
   );
 }
 
@@ -535,6 +579,14 @@ function SettingRow({ icon, title, value }: { icon: ReactNode; title: string; va
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
 };
+
+function isIOS() {
+  return /iphone|ipad|ipod/i.test(window.navigator.userAgent);
+}
+
+function isAppInstalled() {
+  return window.matchMedia("(display-mode: standalone)").matches || Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone);
+}
 
 function createDemoOrder(ad: PublicAd, amount: number): OrderSnapshot {
   const fiatAmount = amount * Number(ad.price);

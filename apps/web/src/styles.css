@@ -202,6 +202,35 @@ h2 {
   background: #111827;
 }
 
+.install-card {
+  display: grid;
+  gap: 10px;
+  padding: 13px;
+  border-radius: 8px;
+  background: #101827;
+  color: white;
+}
+
+.install-card.compact {
+  margin-bottom: 10px;
+}
+
+.install-card div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.install-card p {
+  color: #cbd5e1;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.install-card button {
+  background: #0f766e;
+}
+
 .notice {
   display: flex;
   gap: 8px;
