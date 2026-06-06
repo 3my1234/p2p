@@ -231,6 +231,11 @@ h2 {
   background: #0f766e;
 }
 
+.install-card .install-secondary {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
 .notice {
   display: flex;
   gap: 8px;

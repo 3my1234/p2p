@@ -341,6 +341,7 @@ function InstallCard({
   compact?: boolean;
 }) {
   const ios = isIOS();
+  const [showManualSteps, setShowManualSteps] = useState(!compact);
 
   if (installPrompt) {
     return (
@@ -369,11 +370,17 @@ function InstallCard({
         {ios ? <Share2 size={18} /> : <Smartphone size={18} />}
         <strong>{ios ? "Add BAZE P2P to Home Screen" : "Install BAZE P2P"}</strong>
       </div>
-      <p>
-        {ios
-          ? "On iPhone: open this page in Safari, tap Share, then Add to Home Screen."
-          : "On Android Chrome: open the browser menu and choose Install app or Add to Home screen."}
-      </p>
+      {showManualSteps && (
+        <p>
+          {ios
+            ? "On iPhone: open this page in Safari, tap Share, then Add to Home Screen."
+            : "On Android Chrome: open the browser menu, then choose Install app or Add to Home screen."}
+        </p>
+      )}
+      <button className="install-secondary" onClick={() => setShowManualSteps((visible) => !visible)}>
+        {ios ? <Share2 size={18} /> : <Download size={18} />}
+        {showManualSteps ? "Hide install steps" : "Show install steps"}
+      </button>
     </div>
   );
 }
