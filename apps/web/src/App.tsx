@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { OrderSnapshot, PublicAd } from "@baze/shared";
-import { cancelOrder, createOrder, disputeOrder, getOrder, listAds, markPaid, releaseOrder } from "./api";
+import type { OrderSnapshot, PublicAd, UserSession } from "@baze/shared";
+import { cancelOrder, createOrder, disputeOrder, getOrder, getSession, listAds, markPaid, releaseOrder, signup } from "./api";
 import { OrderPanel } from "./components/OrderPanel";
 import { usePWAResilience } from "./hooks/usePWAResilience";
 import {
@@ -23,8 +23,8 @@ import {
   Zap
 } from "lucide-react";
 
-const DEV_BUYER_ID = "22222222-2222-4222-8222-222222222222";
 const DEV_SELLER_ID = "11111111-1111-4111-8111-111111111111";
+const SESSION_KEY = "baze:user-session";
 
 const fallbackAds: PublicAd[] = [
   {
@@ -71,6 +71,10 @@ const fallbackAds: PublicAd[] = [
 type Tab = "home" | "p2p" | "orders" | "wallet" | "profile";
 
 export function App() {
+  const [session, setSession] = useState<UserSession | null>(() => {
+    const saved = window.localStorage.getItem(SESSION_KEY);
+    return saved ? (JSON.parse(saved) as UserSession) : null;
+  });
   const [ads, setAds] = useState<PublicAd[]>(fallbackAds);
   const [order, setOrder] = useState<OrderSnapshot | null>(null);
   const [amount, setAmount] = useState(25);
@@ -80,6 +84,16 @@ export function App() {
   const [apiOnline, setApiOnline] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+
+  useEffect(() => {
+    if (!session?.id) return;
+    void getSession(session.id)
+      .then((fresh) => {
+        setSession(fresh);
+        window.localStorage.setItem(SESSION_KEY, JSON.stringify(fresh));
+      })
+      .catch(() => undefined);
+  }, [session?.id]);
 
   useEffect(() => {
     const onBeforeInstallPrompt = (event: Event) => {
@@ -111,14 +125,33 @@ export function App() {
   const { connected } = usePWAResilience(order?.id ?? null, order?.lastEventId ?? 0, (snapshot) => setOrder(snapshot));
 
   const portfolioValue = useMemo(() => {
-    const asset = order ? Number(order.assetAmount) : 0;
-    return 2450 + asset;
-  }, [order]);
+    return session?.wallets.reduce((total, wallet) => total + Number(wallet.availableBalance), 0) ?? 0;
+  }, [session?.wallets]);
 
-  async function handleBuy(ad: PublicAd) {
+  async function handleSignup(payload: { email: string; legalName: string; countryCode: string; passcode: string }) {
     setError(null);
     try {
-      const result = await createOrder(ad.id, DEV_BUYER_ID, amount);
+      const created = await signup(payload);
+      setSession(created);
+      window.localStorage.setItem(SESSION_KEY, JSON.stringify(created));
+      setTab("home");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not create account");
+    }
+  }
+
+  function handleSignOut() {
+    window.localStorage.removeItem(SESSION_KEY);
+    setSession(null);
+    setOrder(null);
+    setTab("p2p");
+  }
+
+  async function handleBuy(ad: PublicAd) {
+    if (!session) return;
+    setError(null);
+    try {
+      const result = await createOrder(ad.id, session.id, amount);
       const snapshot = await getOrder(result.id);
       setOrder(snapshot);
       setTab("orders");
@@ -131,9 +164,9 @@ export function App() {
   }
 
   async function handleMarkPaid() {
-    if (!order) return;
+    if (!order || !session) return;
     try {
-      await markPaid(order.id, DEV_BUYER_ID, sourceAccountName);
+      await markPaid(order.id, session.id, sourceAccountName);
       await refreshOrder();
     } catch {
       setOrder({ ...order, status: "BUYER_MARKED_PAID", sourceAccountName, lastEventId: order.lastEventId + 1 } as OrderSnapshot);
@@ -151,9 +184,9 @@ export function App() {
   }
 
   async function handleCancel() {
-    if (!order) return;
+    if (!order || !session) return;
     try {
-      await cancelOrder(order.id, DEV_BUYER_ID);
+      await cancelOrder(order.id, session.id);
       await refreshOrder();
     } catch {
       setOrder({ ...order, status: "CANCELLED_BY_BUYER_BEFORE_PAYMENT", lastEventId: order.lastEventId + 1 });
@@ -161,13 +194,21 @@ export function App() {
   }
 
   async function handleDispute() {
-    if (!order) return;
+    if (!order || !session) return;
     try {
-      await disputeOrder(order.id, DEV_BUYER_ID, "Payment evidence requires review");
+      await disputeOrder(order.id, session.id, "Payment evidence requires review");
       await refreshOrder();
     } catch {
       setOrder({ ...order, status: "DISPUTED", lastEventId: order.lastEventId + 1 });
     }
+  }
+
+  if (!session) {
+    return (
+      <main className="app-frame auth-frame">
+        <SignupScreen onSignup={handleSignup} installPrompt={installPrompt} consumeInstallPrompt={() => setInstallPrompt(null)} error={error} />
+      </main>
+    );
   }
 
   return (
@@ -176,7 +217,7 @@ export function App() {
         <div className="brand-mark">B</div>
         <div>
           <p>BAZE P2P</p>
-          <strong>Fast escrow trading</strong>
+          <strong>{session.pseudonym}</strong>
         </div>
         <button className="icon-button" aria-label="Notifications">
           <Bell size={19} />
@@ -203,7 +244,7 @@ export function App() {
         </div>
       )}
 
-      {tab === "home" && <HomeScreen portfolioValue={portfolioValue} setTab={setTab} />}
+      {tab === "home" && <HomeScreen session={session} portfolioValue={portfolioValue} setTab={setTab} />}
       {tab === "p2p" && <P2PScreen ads={ads} amount={amount} setAmount={setAmount} onBuy={handleBuy} apiOnline={apiOnline} />}
       {tab === "orders" &&
         (order ? (
@@ -222,8 +263,8 @@ export function App() {
         ) : (
           <EmptyOrders setTab={setTab} />
         ))}
-      {tab === "wallet" && <WalletScreen portfolioValue={portfolioValue} />}
-      {tab === "profile" && <ProfileScreen />}
+      {tab === "wallet" && <WalletScreen session={session} portfolioValue={portfolioValue} />}
+      {tab === "profile" && <ProfileScreen session={session} onSignOut={handleSignOut} />}
 
       <nav className="bottom-nav" aria-label="Primary">
         <NavButton tab="home" current={tab} setTab={setTab} icon={<Home size={19} />} label="Home" />
@@ -236,11 +277,68 @@ export function App() {
   );
 }
 
-function HomeScreen({ portfolioValue, setTab }: { portfolioValue: number; setTab: (tab: Tab) => void }) {
+function SignupScreen({
+  onSignup,
+  installPrompt,
+  consumeInstallPrompt,
+  error
+}: {
+  onSignup: (payload: { email: string; legalName: string; countryCode: string; passcode: string }) => Promise<void>;
+  installPrompt: BeforeInstallPromptEvent | null;
+  consumeInstallPrompt: () => void;
+  error: string | null;
+}) {
+  const [email, setEmail] = useState("");
+  const [legalName, setLegalName] = useState("");
+  const [countryCode, setCountryCode] = useState("NG");
+  const [passcode, setPasscode] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submit() {
+    setSubmitting(true);
+    await onSignup({ email, legalName, countryCode, passcode });
+    setSubmitting(false);
+  }
+
+  return (
+    <section className="signup-screen">
+      <div className="brand-mark large">B</div>
+      <div>
+        <p className="label">Installable mobile PWA</p>
+        <h1>Create your BAZE wallet</h1>
+        <p className="auth-copy">Sign up, get USDT and USDC internal wallets, complete identity verification, then trade P2P with escrow protection.</p>
+      </div>
+      {installPrompt && (
+        <button
+          className="install-banner"
+          onClick={() => {
+            void installPrompt.prompt();
+            consumeInstallPrompt();
+          }}
+        >
+          <Smartphone size={18} />
+          Install on this phone
+        </button>
+      )}
+      {error && <div className="notice offline-notice">{error}</div>}
+      <div className="auth-form">
+        <input placeholder="Email address" value={email} onChange={(event) => setEmail(event.target.value)} inputMode="email" />
+        <input placeholder="Legal name for KYC" value={legalName} onChange={(event) => setLegalName(event.target.value)} />
+        <input placeholder="Country code" value={countryCode} onChange={(event) => setCountryCode(event.target.value.toUpperCase())} />
+        <input placeholder="6 digit passcode" value={passcode} onChange={(event) => setPasscode(event.target.value)} type="password" />
+        <button disabled={submitting || !email || !legalName || passcode.length < 6} onClick={submit}>
+          {submitting ? "Creating wallet..." : "Create account"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function HomeScreen({ session, portfolioValue, setTab }: { session: UserSession; portfolioValue: number; setTab: (tab: Tab) => void }) {
   return (
     <section className="screen-stack">
       <div className="balance-panel">
-        <p>Total balance</p>
+        <p>{session.kycStatus} account</p>
         <h1>{portfolioValue.toLocaleString(undefined, { maximumFractionDigits: 2 })} USDT</h1>
         <div className="quick-actions">
           <button>
@@ -251,7 +349,7 @@ function HomeScreen({ portfolioValue, setTab }: { portfolioValue: number; setTab
         </div>
       </div>
       <div className="action-grid">
-        <ActionTile icon={<ShieldCheck />} title="KYC verified" body="Trade limits unlocked" />
+        <ActionTile icon={<ShieldCheck />} title="KYC verified" body="P2P access unlocked" />
         <ActionTile icon={<LockKeyhole />} title="Escrow guard" body="Crypto locked until release" />
         <ActionTile icon={<Smartphone />} title="PWA ready" body="Switch to bank app safely" />
         <ActionTile icon={<Landmark />} title="Bank transfer" body="Strict sender-name check" />
@@ -316,7 +414,7 @@ function P2PScreen({
               <div className="avatar-dot">{ad.merchantPseudonym.slice(0, 1)}</div>
               <div>
                 <strong>{ad.merchantPseudonym}</strong>
-                <p>{ad.completionRate}% completion · {ad.averageReleaseSeconds || 45}s avg release</p>
+                <p>{ad.completionRate}% completion - {ad.averageReleaseSeconds || 45}s avg release</p>
               </div>
             </div>
             <div className="price-row">
@@ -348,15 +446,21 @@ function EmptyOrders({ setTab }: { setTab: (tab: Tab) => void }) {
   );
 }
 
-function WalletScreen({ portfolioValue }: { portfolioValue: number }) {
+function WalletScreen({ session, portfolioValue }: { session: UserSession; portfolioValue: number }) {
   return (
     <section className="screen-stack">
       <div className="balance-panel compact">
         <p>Wallet balance</p>
         <h1>{portfolioValue.toLocaleString(undefined, { maximumFractionDigits: 2 })} USDT</h1>
       </div>
-      <AssetRow asset="USDT" available="2,450.00" escrow="0.00" />
-      <AssetRow asset="USDC" available="600.00" escrow="0.00" />
+      {session.wallets.map((wallet) => (
+        <AssetRow
+          key={wallet.asset}
+          asset={wallet.asset}
+          available={Number(wallet.availableBalance).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+          escrow={Number(wallet.escrowBalance).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+        />
+      ))}
       <div className="panel-block">
         <h2>Escrow accounting</h2>
         <p>Every order debits seller available balance, locks escrow, then credits buyer and platform revenue on release.</p>
@@ -365,14 +469,14 @@ function WalletScreen({ portfolioValue }: { portfolioValue: number }) {
   );
 }
 
-function ProfileScreen() {
+function ProfileScreen({ session, onSignOut }: { session: UserSession; onSignOut: () => void }) {
   return (
     <section className="screen-stack">
       <div className="profile-card">
-        <div className="avatar-dot large">T</div>
+        <div className="avatar-dot large">{session.pseudonym.slice(0, 1)}</div>
         <div>
-          <h1>Trader_X_882</h1>
-          <p>Verified account · Tier 1</p>
+          <h1>{session.pseudonym}</h1>
+          <p>{session.kycStatus} account - Tier 1</p>
         </div>
       </div>
       <div className="settings-list">
@@ -381,6 +485,7 @@ function ProfileScreen() {
         <SettingRow icon={<CircleDollarSign />} title="Maker fee" value="0.2%" />
         <SettingRow icon={<Bell />} title="Push alerts" value="Ready" />
       </div>
+      <button className="secondary" onClick={onSignOut}>Sign out</button>
     </section>
   );
 }

@@ -82,6 +82,38 @@ h2 {
   box-shadow: 0 24px 80px rgba(15, 23, 42, 0.18);
 }
 
+.auth-frame {
+  display: grid;
+  align-items: center;
+}
+
+.signup-screen {
+  display: grid;
+  gap: 16px;
+}
+
+.brand-mark.large {
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  font-size: 28px;
+}
+
+.auth-copy {
+  margin-top: 8px;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.auth-form {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: white;
+}
+
 .app-topbar,
 .toolbar,
 .ad-top,

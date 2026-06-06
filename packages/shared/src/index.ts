@@ -28,6 +28,13 @@ export const createOrderSchema = z.object({
   assetAmount: z.coerce.number().positive()
 });
 
+export const signupSchema = z.object({
+  email: z.string().email(),
+  legalName: z.string().min(2).max(160),
+  countryCode: z.string().min(2).max(3),
+  passcode: z.string().min(6).max(64)
+});
+
 export const markPaidSchema = z.object({
   buyerId: z.string().uuid(),
   sourceAccountName: z.string().min(2).max(160),
@@ -61,6 +68,20 @@ export type PublicAd = {
   paymentMethods: string[];
   completionRate: number;
   averageReleaseSeconds: number;
+};
+
+export type WalletBalance = {
+  asset: Asset;
+  availableBalance: string;
+  escrowBalance: string;
+};
+
+export type UserSession = {
+  id: string;
+  email: string;
+  pseudonym: string;
+  kycStatus: "PENDING" | "VERIFIED" | "REJECTED" | "FROZEN";
+  wallets: WalletBalance[];
 };
 
 export type OrderSnapshot = {

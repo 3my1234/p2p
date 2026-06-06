@@ -1,4 +1,4 @@
-import type { OrderSnapshot, PublicAd } from "@baze/shared";
+import type { OrderSnapshot, PublicAd, UserSession } from "@baze/shared";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
 export const WS_URL = import.meta.env.VITE_WS_URL ?? "ws://localhost:8080/ws";
@@ -20,6 +20,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function listAds() {
   return request<PublicAd[]>("/api/v1/p2p/ads");
+}
+
+export function signup(payload: { email: string; legalName: string; countryCode: string; passcode: string }) {
+  return request<UserSession>("/api/v1/auth/signup", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function getSession(userId: string) {
+  return request<UserSession>(`/api/v1/users/${userId}/session`);
 }
 
 export function createOrder(adId: string, buyerId: string, assetAmount: number) {

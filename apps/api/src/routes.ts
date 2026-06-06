@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { getSession, signup } from "./services/auth.js";
 import {
   addChatMessage,
   cancelOrder,
@@ -15,6 +16,12 @@ import {
 
 export async function registerRoutes(app: FastifyInstance) {
   app.get("/health", async () => ({ ok: true }));
+
+  app.post("/api/v1/auth/signup", async (request) => signup(request.body));
+  app.get("/api/v1/users/:id/session", async (request) => {
+    const { id } = request.params as { id: string };
+    return getSession(id);
+  });
 
   app.get("/api/v1/p2p/ads", async () => listAds());
   app.post("/api/v1/p2p/ads", async (request) => createAd(request.body));

@@ -15,9 +15,10 @@ export default defineConfig({
         theme_color: "#0f172a",
         background_color: "#f8fafc",
         display: "standalone",
+        orientation: "portrait",
         start_url: "/",
         scope: "/",
-        icons: [{ src: "/favicon.svg", sizes: "64x64", type: "image/svg+xml" }]
+        icons: [{ src: "/favicon.svg", sizes: "any", type: "image/svg+xml", purpose: "any maskable" }]
       },
       workbox: {
         cleanupOutdatedCaches: true,
